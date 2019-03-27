@@ -5,6 +5,13 @@ import glob
 import shutil
 import numpy as np
 
+from xml.dom.minidom import Document
+import cv2
+import os
+import glob
+import shutil
+import numpy as np
+
 def generate_xml(name, classes, XMIN, YMIN, XMAX, YMAX, img_size, class_sets, doncateothers=True):
     doc = Document()
 
@@ -39,10 +46,10 @@ def generate_xml(name, classes, XMIN, YMIN, XMAX, YMAX, img_size, class_sets, do
     objs = []
     for index in range(0, len(classes)):
         cls = classes[index]
-        xmin = XMIN[index]
-        ymin = YMIN[index]
-        xmax = XMAX[index]
-        ymax = YMAX[index]
+        xmin = float(XMIN[index])
+        ymin = float(YMIN[index])
+        xmax = float(XMAX[index])
+        ymax = float(YMAX[index])
         if not doncateothers and cls not in class_sets:
             continue
         cls = 'dontcare' if cls not in class_sets else cls
@@ -50,16 +57,8 @@ def generate_xml(name, classes, XMIN, YMIN, XMAX, YMAX, img_size, class_sets, do
             continue
         obj = append_xml_node_attr('object', parent=annotation)
         occlusion = int(0)
-        xmin, ymin, xmax, ymax = int(float(xmin) + 1), int(float(ymin) + 1), \
-                         int(float(xmax) + 1), int(float(ymax) + 1)
-        if ymax > img_size[1]:
-            ymax = img_size[1]
-        if xmax > img_size[0]:
-            xmax = img_size[0]
-        if xmin < 1:
-            xmin = 1
-        if ymin < 1:
-            ymin = 1
+        loc = np.clip(np.asarray([xmin, ymin, xmax, ymax], dtype=float),1,2047)
+        xmin, ymin, xmax, ymax = loc[0], loc[1], loc[2], loc[3]
         if xmax < xmin:
             temp = xmax
             xmax = xmin
@@ -70,7 +69,8 @@ def generate_xml(name, classes, XMIN, YMIN, XMAX, YMAX, img_size, class_sets, do
             ymin = temp
 
         truncation = float(0)
-        difficult = 1 if _is_hard(cls, truncation, occlusion, xmin, ymin, xmax, ymax) else 0
+#         difficult = 1 if _is_hard(cls, truncation, occlusion, xmin, ymin, xmax, ymax) else 0
+        difficult = 0
         truncted = 0 if truncation < 0.5 else 1
 
         append_xml_node_attr('name', parent=obj, text=cls)
@@ -120,30 +120,29 @@ def build_voc_dirs(outdir):
 
 
 if __name__ == '__main__':
-    _outdir = 'TEXTVOC/VOC2007'
+    _outdir = 'TT100KVOC/VOC2007'
     _draw = bool(0)
     _dest_label_dir, _dest_img_dir, _dest_set_dir = build_voc_dirs(_outdir)
     print(_dest_label_dir, _dest_img_dir, _dest_set_dir)
     _doncateothers = bool(1)
     for phase in ['train', 'test']:
-        label = phase + ".txt"
+        label = "./data/"+ phase + ".txt"
         fp = open(label, 'r')
         class_sets = ('pn', 'ph5', 'pl80', 'pl120', 'w32', 'pl50', 'wo', 'pl30', 'pl60', 'pm55', 'pl20', 'pm30', 'p26', 'w13', 'p5', 'po', 'ph4', 'pne', 'p12', 'w55', 'pl70', 'io', 'i2', 'ph4.5', 'pl40', 'p6', 'pg', 'pm20', 'pl100', 'p27', 'pr40', 'w57', 'pl5', 'p11', 'il80', 'p23', 'w59', 'il100', 'i5', 'p3', 'i4', 'il60', 'p19', 'ip', 'p10', 'dontcare')
         class_sets_dict = dict((k, i) for i, k in enumerate(class_sets))
         allclasses = {}
         fs = [open(os.path.join(_dest_set_dir, cls + '_' + phase + '.txt'), 'w') for cls in class_sets]
         ftrain = open(os.path.join(_dest_set_dir, phase + '.txt'), 'w')
-        for line in fp:
+        for line in tqdm(fp):
             line = line.strip()
-            items = line.split(',')
+            items = line.split()
             image_dir = items[0]
-            print(image_dir)
             stem, ext = os.path.splitext(image_dir.split('/')[-1])
             classes = items[1::5]
             XMIN = items[2::5]
             YMIN = items[3::5]
-            XMAX = items[3::5]
-            YMAX = items[4::5]
+            XMAX = items[4::5]
+            YMAX = items[5::5]
             img = cv2.imread(image_dir)
             img_size = img.shape
             assert(len(XMIN) == len(classes), 'check format of input, the number of location is not the same!!')
